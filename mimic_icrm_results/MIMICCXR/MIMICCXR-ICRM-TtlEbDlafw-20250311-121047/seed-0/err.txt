@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "main.py", line 228, in <module>
+    step_metrics = algorithm.update(minibatches_device)
+  File "/data/healthy-ml/scratch/olawale/my-icrm/algorithms.py", line 89, in update
+    out = self.predict(x, y)
+  File "/data/healthy-ml/scratch/olawale/my-icrm/algorithms.py", line 427, in predict
+    outputs = self.classifier((x, y, None, past_key_values))
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/data/healthy-ml/scratch/olawale/my-icrm/networks.py", line 203, in forward
+    # Make prediction using the pooled representation
+KeyboardInterrupt
+Error in atexit._run_exitfuncs:
+Traceback (most recent call last):
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/multiprocessing/popen_fork.py", line 27, in poll
+    pid, sts = os.waitpid(self.pid, flag)
+KeyboardInterrupt

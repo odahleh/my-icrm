@@ -1,0 +1,77 @@
+=> Environment:
+	Python: 3.8.12
+	PyTorch: 2.4.1+cu121
+	Torchvision: 0.19.1+cu121
+	CUDA: 12.1
+	CUDNN: 90100
+	NumPy: 1.24.3
+	PIL: 9.5.0
+=> HParams:
+	additonal_metrics: ['worst_group', 'average']
+	batch_size: 4
+	beta1: 0.5
+	context_length: 8
+	data_augmentation: True
+	densenet121: False
+	device: cuda
+	freeze_bn: 1
+	is_iid_tr: 0
+	is_parallel: True
+	is_supervised: 0
+	is_transformer: 0
+	loss: cross_entropy
+	lr: 0.0001
+	metrics: ['acc']
+	n_embd: 256
+	n_head: 8
+	n_layer: 6
+	n_sampled_tasks: 0
+	nonlinear_classifier: False
+	num_features: 3
+	optimizer_name: Adam
+	output_dir: ./mimic_icrm_results/MIMICCXR/MIMICCXR-ICRM-cilhlGUCjM-20250311-115616/seed-0
+	overall_seed: 0
+	print_last: 1
+	resnet18: False
+	resnet_dropout: 0
+	terminal_command: main.py --dataset MIMICCXR --algorithm ICRM --output_dir ./mimic_icrm_results --hparams {"batch_size": 4, "context_length": 8, "lr": 0.0001}
+	test_batch_size: 32
+	trial_seed: 0
+	weight_decay: 0.0
+=> Seed of the run set to 0
+=> Loading MIMIC-CXR from: /data/healthy-ml/gobi1/data/MIMIC-CXR-JPG/subpop_bench_meta/
+=> Split sizes - Train: 150994, Val: 32356, Test: 32357
+=> Training ResNet architecture...
+=> Training ResNet with frozen batch norm...
+=> Initializing a GPT2 Transformer...
+=> Using data parallel
+=> Checkpointing based on acc(e-0)
+Minibatch 0: x shape torch.Size([4, 8, 3, 224, 224]), y shape torch.Size([4])
+DEBUG: predict called with unusual input dimensions:
+  x.shape = torch.Size([4, 8, 3, 224, 224]), x.ndim = 5
+  y.shape = torch.Size([4]), y.ndim = 1
+  return_context = False
+  past_key_values provided = False
+DEBUG: Before classifier call:
+  x.shape = torch.Size([32, 1, 2048])
+  Classifier input type: <class 'tuple'>
+torch.Size([32, 1, 2048]) torch.Size([4, 1]) 2048 2
+Traceback (most recent call last):
+  File "main.py", line 228, in <module>
+    step_metrics = algorithm.update(minibatches_device)
+  File "/data/healthy-ml/scratch/olawale/my-icrm/algorithms.py", line 89, in update
+    out = self.predict(x, y)
+  File "/data/healthy-ml/scratch/olawale/my-icrm/algorithms.py", line 425, in predict
+    print(f"  Classifier input type: {type((x, y, None, past_key_values))}")
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/data/healthy-ml/scratch/olawale/my-icrm/networks.py", line 197, in forward
+    input("")
+KeyboardInterrupt
+Error in atexit._run_exitfuncs:
+Traceback (most recent call last):
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/multiprocessing/popen_fork.py", line 27, in poll
+    pid, sts = os.waitpid(self.pid, flag)
+KeyboardInterrupt

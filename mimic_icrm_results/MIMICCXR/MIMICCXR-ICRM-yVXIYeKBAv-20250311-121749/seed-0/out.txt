@@ -1,0 +1,204 @@
+=> Environment:
+	Python: 3.8.12
+	PyTorch: 2.4.1+cu121
+	Torchvision: 0.19.1+cu121
+	CUDA: 12.1
+	CUDNN: 90100
+	NumPy: 1.24.3
+	PIL: 9.5.0
+=> HParams:
+	additonal_metrics: ['worst_group', 'average']
+	batch_size: 4
+	beta1: 0.5
+	context_length: 8
+	data_augmentation: True
+	densenet121: False
+	device: cuda
+	freeze_bn: 1
+	is_iid_tr: 0
+	is_parallel: True
+	is_supervised: 0
+	is_transformer: 0
+	loss: cross_entropy
+	lr: 0.0001
+	metrics: ['acc']
+	n_embd: 256
+	n_head: 8
+	n_layer: 6
+	n_sampled_tasks: 0
+	nonlinear_classifier: False
+	num_features: 3
+	optimizer_name: Adam
+	output_dir: ./mimic_icrm_results/MIMICCXR/MIMICCXR-ICRM-yVXIYeKBAv-20250311-121749/seed-0
+	overall_seed: 0
+	print_last: 1
+	resnet18: False
+	resnet_dropout: 0
+	terminal_command: main.py --dataset MIMICCXR --algorithm ICRM --output_dir ./mimic_icrm_results --hparams {"batch_size": 4, "context_length": 8, "lr": 0.0001}
+	test_batch_size: 32
+	trial_seed: 0
+	weight_decay: 0.0
+=> Seed of the run set to 0
+=> Loading MIMIC-CXR from: /data/healthy-ml/gobi1/data/MIMIC-CXR-JPG/subpop_bench_meta/
+=> Split sizes - Train: 150994, Val: 32356, Test: 32357
+=> Training ResNet architecture...
+=> Training ResNet with frozen batch norm...
+=> Initializing a GPT2 Transformer...
+=> Using data parallel
+=> Checkpointing based on acc(e-0)
+Minibatch 0: x shape torch.Size([4, 8, 3, 224, 224]), y shape torch.Size([4])
+DEBUG: predict called with unusual input dimensions:
+  x.shape = torch.Size([4, 8, 3, 224, 224]), x.ndim = 5
+  y.shape = torch.Size([4]), y.ndim = 1
+  return_context = False
+  past_key_values provided = False
+torch.Size([32, 2048]) 4 8
+DEBUG: Before classifier call:
+  x.shape = torch.Size([4, 8, 2048])
+  Classifier input type: <class 'tuple'>
+DEBUG: Classifier output (tuple):
+  p.shape = torch.Size([4, 2])
+  past is provided: True
+  Output shape: torch.Size([4, 2])
+Concatenated: p shape: torch.Size([4, 2]), all_y shape: torch.Size([4])
+Final shapes for loss: p: torch.Size([4, 2]), all_y: torch.Size([4])
+DEBUG: Loader type: <class 'utils.FastDataLoader'>
+DEBUG: Loader dataset type: <class 'dataset.MIMICDataset'>
+DEBUG: Sample from dataset - x.shape: torch.Size([8, 3, 224, 224]), y.shape: torch.Size([])
+DEBUG: Batch 0 from loader - x.shape: torch.Size([32, 8, 3, 224, 224]), y.shape: torch.Size([32])
+DEBUG: predict called with unusual input dimensions:
+  x.shape = torch.Size([32, 8, 3, 224, 224]), x.ndim = 5
+  y.shape = torch.Size([32]), y.ndim = 1
+  return_context = True
+  past_key_values provided = False
+torch.Size([256, 2048]) 32 8
+DEBUG: Before classifier call:
+  x.shape = torch.Size([32, 8, 2048])
+  Classifier input type: <class 'tuple'>
+DEBUG: Classifier output (tuple):
+  p.shape = torch.Size([32, 2])
+  past is provided: True
+DEBUG: Batch 1 from loader - x.shape: torch.Size([32, 8, 3, 224, 224]), y.shape: torch.Size([32])
+DEBUG: predict called with unusual input dimensions:
+  x.shape = torch.Size([32, 8, 3, 224, 224]), x.ndim = 5
+  y.shape = torch.Size([32]), y.ndim = 1
+  return_context = True
+  past_key_values provided = False
+torch.Size([256, 2048]) 32 8
+DEBUG: Before classifier call:
+  x.shape = torch.Size([32, 8, 2048])
+  Classifier input type: <class 'tuple'>
+DEBUG: Classifier output (tuple):
+  p.shape = torch.Size([32, 2])
+  past is provided: True
+DEBUG: Batch 2 from loader - x.shape: torch.Size([32, 8, 3, 224, 224]), y.shape: torch.Size([32])
+DEBUG: predict called with unusual input dimensions:
+  x.shape = torch.Size([32, 8, 3, 224, 224]), x.ndim = 5
+  y.shape = torch.Size([32]), y.ndim = 1
+  return_context = True
+  past_key_values provided = False
+torch.Size([256, 2048]) 32 8
+DEBUG: Before classifier call:
+  x.shape = torch.Size([32, 8, 2048])
+  Classifier input type: <class 'tuple'>
+DEBUG: Classifier output (tuple):
+  p.shape = torch.Size([32, 2])
+  past is provided: True
+DEBUG: Batch 3 from loader - x.shape: torch.Size([32, 8, 3, 224, 224]), y.shape: torch.Size([32])
+DEBUG: predict called with unusual input dimensions:
+  x.shape = torch.Size([32, 8, 3, 224, 224]), x.ndim = 5
+  y.shape = torch.Size([32]), y.ndim = 1
+  return_context = True
+  past_key_values provided = False
+torch.Size([256, 2048]) 32 8
+DEBUG: Before classifier call:
+  x.shape = torch.Size([32, 8, 2048])
+  Classifier input type: <class 'tuple'>
+DEBUG: Classifier output (tuple):
+  p.shape = torch.Size([32, 2])
+  past is provided: True
+DEBUG: Batch 4 from loader - x.shape: torch.Size([32, 8, 3, 224, 224]), y.shape: torch.Size([32])
+DEBUG: predict called with unusual input dimensions:
+  x.shape = torch.Size([32, 8, 3, 224, 224]), x.ndim = 5
+  y.shape = torch.Size([32]), y.ndim = 1
+  return_context = True
+  past_key_values provided = False
+torch.Size([256, 2048]) 32 8
+DEBUG: Before classifier call:
+  x.shape = torch.Size([32, 8, 2048])
+  Classifier input type: <class 'tuple'>
+DEBUG: Classifier output (tuple):
+  p.shape = torch.Size([32, 2])
+  past is provided: True
+DEBUG: Batch 5 from loader - x.shape: torch.Size([32, 8, 3, 224, 224]), y.shape: torch.Size([32])
+DEBUG: predict called with unusual input dimensions:
+  x.shape = torch.Size([32, 8, 3, 224, 224]), x.ndim = 5
+  y.shape = torch.Size([32]), y.ndim = 1
+  return_context = True
+  past_key_values provided = False
+torch.Size([256, 2048]) 32 8
+DEBUG: Before classifier call:
+  x.shape = torch.Size([32, 8, 2048])
+  Classifier input type: <class 'tuple'>
+DEBUG: Classifier output (tuple):
+  p.shape = torch.Size([32, 2])
+  past is provided: True
+DEBUG: Batch 6 from loader - x.shape: torch.Size([32, 8, 3, 224, 224]), y.shape: torch.Size([32])
+DEBUG: predict called with unusual input dimensions:
+  x.shape = torch.Size([32, 8, 3, 224, 224]), x.ndim = 5
+  y.shape = torch.Size([32]), y.ndim = 1
+  return_context = True
+  past_key_values provided = False
+torch.Size([256, 2048]) 32 8
+DEBUG: Before classifier call:
+  x.shape = torch.Size([32, 8, 2048])
+  Classifier input type: <class 'tuple'>
+DEBUG: Classifier output (tuple):
+  p.shape = torch.Size([32, 2])
+  past is provided: True
+DEBUG: Batch 7 from loader - x.shape: torch.Size([32, 8, 3, 224, 224]), y.shape: torch.Size([32])
+DEBUG: predict called with unusual input dimensions:
+  x.shape = torch.Size([32, 8, 3, 224, 224]), x.ndim = 5
+  y.shape = torch.Size([32]), y.ndim = 1
+  return_context = True
+  past_key_values provided = False
+torch.Size([256, 2048]) 32 8
+DEBUG: Before classifier call:
+  x.shape = torch.Size([32, 8, 2048])
+  Classifier input type: <class 'tuple'>
+DEBUG: Classifier output (tuple):
+  p.shape = torch.Size([32, 2])
+  past is provided: True
+Traceback (most recent call last):
+  File "main.py", line 236, in <module>
+    val_metric_results = algorithm.evaluate(loader, cache = validation_cache[index])
+  File "/data/healthy-ml/scratch/olawale/my-icrm/algorithms.py", line 687, in evaluate
+    result = self._evaluate_robust(self.network, loader, self.hparams['metrics'],  cache)
+  File "/data/healthy-ml/scratch/olawale/my-icrm/algorithms.py", line 525, in _evaluate_robust
+    for batch_idx, (x, y) in enumerate(loader):
+  File "/data/healthy-ml/scratch/olawale/my-icrm/utils.py", line 208, in __iter__
+    yield next(self._infinite_iterator)
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 630, in __next__
+    data = self._next_data()
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1327, in _next_data
+    idx, data = self._get_data()
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1293, in _get_data
+    success, data = self._try_get_data()
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1131, in _try_get_data
+    data = self._data_queue.get(timeout=timeout)
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/multiprocessing/queues.py", line 107, in get
+    if not self._poll(timeout):
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/multiprocessing/connection.py", line 257, in poll
+    return self._poll(timeout)
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/multiprocessing/connection.py", line 424, in _poll
+    r = wait([self], timeout)
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/multiprocessing/connection.py", line 931, in wait
+    ready = selector.select(timeout)
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/selectors.py", line 415, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt
+Error in atexit._run_exitfuncs:
+Traceback (most recent call last):
+  File "/data/healthy-ml/scratch/olawale/anaconda3/envs/icrm/lib/python3.8/multiprocessing/popen_fork.py", line 27, in poll
+    pid, sts = os.waitpid(self.pid, flag)
+KeyboardInterrupt

@@ -39,19 +39,19 @@ class Algorithm(torch.nn.Module):
         self.loss_func = utils.get_loss_function(hparams['loss'])
         self.device = hparams['device']
         self.n_tasks_per_step = hparams['n_sampled_tasks'] if hparams.get('n_sampled_tasks') else 0
-        
+
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
         self.classifier = networks.Classifier(self.featurizer.n_outputs, num_classes, self.hparams)
-        
+
         if hparams['is_parallel']:
             print('=> Using data parallel')
             self.featurizer = utils.data_parallel(self.featurizer)
             self.classifier = utils.data_parallel(self.classifier)
-                
+
         self.network = torch.nn.Sequential(self.featurizer, self.classifier)
         self.optimizer = utils.extract_optimizer(self.hparams['optimizer_name'], self.network.parameters(), lr = self.hparams['lr'], weight_decay = self.hparams['weight_decay'])
-        
-        
+
+
     def update(self, minibatches, unlabeled=None):
         """
         Perform one update step, given a list of (x, y) tuples for all
@@ -64,10 +64,10 @@ class Algorithm(torch.nn.Module):
 
     def predict(self, x, y = None, model = None):
         raise NotImplementedError
-    
+
     def evaluate(self, loader, weights = None, metrics = ['accuracy']):
         raise NotImplementedError()
-    
+
 
 class ERM(Algorithm):
     """
@@ -76,7 +76,7 @@ class ERM(Algorithm):
     def __init__(self, input_shape, num_classes, hparams):
         super(ERM, self).__init__(input_shape, num_classes,
                                   hparams)
-    
+
     def update(self, minibatches, unlabeled=None):
         self.network.train()
         if self.n_tasks_per_step != 0:
@@ -90,21 +90,21 @@ class ERM(Algorithm):
             print(f"  Output shape: {out.shape}")
             p.append(out)
             all_y.append(y)
-       
+
         p = torch.cat(p, dim=0)
         all_y = torch.cat(all_y, dim=0).view(-1).long()
-        
+
         # Debug print to check shapes before loss calculation
         print(f"Concatenated: p shape: {p.shape}, all_y shape: {all_y.shape}")
-        
+
         # Handle batch size mismatch - ensure p and all_y have compatible batch sizes
         if p.shape[0] != all_y.shape[0]:
             print(f"Batch size mismatch! p: {p.shape[0]}, all_y: {all_y.shape[0]}")
-            
+
             # For ICRM, we need to adjust the output shape
             if hasattr(self, 'context_len'):
                 print(f"  Applying ICRM-specific shape adjustment (context_len={self.context_len})")
-                
+
                 # Expand all_y to match p's batch size if needed
                 if p.shape[0] > all_y.shape[0]:
                     # This might happen if p includes duplicate predictions for each context element
@@ -116,7 +116,7 @@ class ERM(Algorithm):
                         # If not evenly divisible, truncate p to match
                         print(f"  Shapes not evenly divisible - truncating p")
                         p = p[:all_y.shape[0]]
-                        
+
                 # Or reduce p if needed
                 elif p.shape[0] < all_y.shape[0]:
                     # This might happen if p combines context elements
@@ -132,15 +132,15 @@ class ERM(Algorithm):
             else:
                 # For non-ICRM models, print a clear error but try to continue
                 print(f"  WARNING: Batch size mismatch in non-ICRM model. Attempting to continue.")
-                
+
                 # Take the smaller size to avoid dimension errors
                 min_size = min(p.shape[0], all_y.shape[0])
                 p = p[:min_size]
                 all_y = all_y[:min_size]
-        
+
         print(f"Final shapes for loss: p: {p.shape}, all_y: {all_y.shape}")
         loss = self.loss_func(p, all_y)
-        
+
         # Compute performance metrics
         metric_results = utils.compute_metric(self.metrics, p, all_y)
         metric_results = {'train_' + key:val for key, val in metric_results.items()}
@@ -152,7 +152,7 @@ class ERM(Algorithm):
         self.optimizer.step()
         return metric_results
     def predict(self, x, y = None, model = None):
-        return (self.network if model is None else model)(x) 
+        return (self.network if model is None else model)(x)
 
     def _evaluate(self, model, loader, metrics=['accuracy']):
         metrics = metrics or self.metrics
@@ -165,7 +165,7 @@ class ERM(Algorithm):
                 try:
                     # Get predictions
                     p = self.predict(x, y, model=model)
-                    
+
                     # Ensure predictions and targets have compatible dimensions for metrics
                     if p.ndim > 1 and y.ndim == 1 and p.shape[0] == y.shape[0]:
                         # Standard case: p is (batch, classes), y is (batch,)
@@ -181,7 +181,7 @@ class ERM(Algorithm):
                     else:
                         # Default case - pass as is and let compute_metric handle it
                         batch_results = utils.compute_metric(metrics, p, y)
-                        
+
                     for metric in metrics:
                         result[metric] += batch_results[metric] * len(y)
                     total += len(y)
@@ -190,8 +190,8 @@ class ERM(Algorithm):
                     print(f"Shapes - x: {x.shape}, y: {y.shape}, predictions: {p.shape if 'p' in locals() else 'N/A'}")
                     # Continue to next batch rather than failing
                     continue
-                    
-        for metric in metrics:  
+
+        for metric in metrics:
             result[metric] /= (total + 1e-9)
         model.train()
         return result
@@ -199,16 +199,16 @@ class ERM(Algorithm):
     def evaluate(self, loader, n_test_samples = 100, module = 'train', cache = None):
         self.network.eval()
         result = {}
-        metric_results = self._evaluate(self.network, loader, self.hparams['metrics'])           
+        metric_results = self._evaluate(self.network, loader, self.hparams['metrics'])
         self.test_ctxt = range(0, 51, 5) if module == 'test' else [0, 25, 50, 75, 100]
         for num_samples in self.test_ctxt:
             result.update({f'{metric}(e-{n_test_samples - num_samples})': metric_results[metric] for metric in self.hparams['metrics']})
         self.network.train()
         return result
-    
+
     def _get_ckpt_metric(self):
         return f'acc(e-0)'
- 
+
 
 class TENT(ERM):
     """Tent: Fully Test-Time Adaptation by Entropy Minimization"""
@@ -219,11 +219,11 @@ class TENT(ERM):
         self.episodic = hparams.get('episodic', 1)
         print(f'Using episodic {bool(self.episodic)} training with {self.n_steps} steps')
         self.flag = 0
-    
+
     def init_states(self):
         self.model_state, self.optimizer_state = self.copy_model_and_optimizer(self.network, self.optimizer)
         self.flag = 1
-                
+
     def _setup_model(self):
         if not self.flag:
             self.o_network = copy.deepcopy(self.network)
@@ -231,23 +231,23 @@ class TENT(ERM):
         self.network = self._configure_model(self.network)
         params, _ = self._collect_params(self.network)
         self.optimizer = utils.extract_optimizer(self.hparams['optimizer_name'], params, lr = self.hparams['lr'], weight_decay = self.hparams['weight_decay'])
-    
+
     def evaluate(self, loader, module = 'train', cache = None):
         if not self.flag:
             self._setup_model()
             self.init_states()
-        
+
         self.reset()
         self._setup_model()
 
         self.test_ctxt = list(range(0, 51, 5)) if module == 'test' else [25, 50, 75, 100]
 
         if 0 in self.test_ctxt:
-            metric_results = self._evaluate(self.o_network, loader, self.hparams['metrics'])  
+            metric_results = self._evaluate(self.o_network, loader, self.hparams['metrics'])
             result = {f'{metric}(e-100)': metric_results[metric] for metric in self.hparams['metrics']}
         else:
             result = {}
-         
+
         assert self.n_steps > 0, "Tent requires >= 1 step(s) to forward and update"
         for n_samples in self.test_ctxt:
             if n_samples == 0:
@@ -258,20 +258,20 @@ class TENT(ERM):
             total = 0
             for _, (x, y) in enumerate(sub_loader):
                 x, y = x.to(self.device), y.to(self.device)
-                if self.episodic:   
+                if self.episodic:
                     self.reset()
                 t_loss = []
                 for _ in range(self.n_steps):
-                    loss, p = self._forward_and_adapt(x, self.network, self.optimizer)    
+                    loss, p = self._forward_and_adapt(x, self.network, self.optimizer)
                     t_loss.append(loss.item())
                 batch_results = utils.compute_metric(self.hparams['metrics'], p, y)
                 for metric in self.hparams['metrics']:
                     metric_results[metric] += batch_results[metric] * len(y)
                 total += len(y)
-            for metric in self.hparams['metrics']:  metric_results[metric] /= (total + 1e-9)  
-            result.update({f'{metric}(e-{100 - n_samples})': metric_results[metric] for metric in self.hparams['metrics']})       
+            for metric in self.hparams['metrics']:  metric_results[metric] /= (total + 1e-9)
+            result.update({f'{metric}(e-{100 - n_samples})': metric_results[metric] for metric in self.hparams['metrics']})
         return result
-    
+
     def reset(self):
         if self.model_state is None or self.optimizer_state is None:
             raise Exception("cannot reset without saved model/optimizer state")
@@ -288,7 +288,7 @@ class TENT(ERM):
         optimizer.step()
         optimizer.zero_grad()
         return loss, outputs
-       
+
     @staticmethod
     def copy_model_and_optimizer(model, optimizer):
         """Copy the model and optimizer states for resetting after adaptation."""
@@ -301,7 +301,7 @@ class TENT(ERM):
         """Restore the model and optimizer states from copies."""
         model.load_state_dict(model_state, strict=True)
         optimizer.load_state_dict(optimizer_state)
-        
+
     @staticmethod
     def _configure_model(model):
         """Configure model for use with tent."""
@@ -313,8 +313,8 @@ class TENT(ERM):
                 m.track_running_stats = False                                               # force use of batch stats in train and eval modes
                 m.running_mean = None
                 m.running_var = None
-        return model 
-    
+        return model
+
     @staticmethod
     def _collect_params(model):
         """Collect the affine scale + shift parameters from batch norms.
@@ -330,7 +330,7 @@ class TENT(ERM):
                         params.append(p)
                         names.append(f"{nm}.{np}")
         return params, names
-    
+
     @staticmethod
     def _check_model(model):
         """Check model for compatability with tent."""
@@ -342,9 +342,9 @@ class TENT(ERM):
         assert has_any_params, "tent needs params to update: check which require grad"
         assert not has_all_params, "tent should not update all params: check which require grad"
         has_bn = any([isinstance(m, torch.nn.BatchNorm2d) for m in model.modules()])
-        assert has_bn, "tent needs normalization for its optimization"  
-        
-        
+        assert has_bn, "tent needs normalization for its optimization"
+
+
 
 class ICRM(ERM):
     """
@@ -355,11 +355,11 @@ class ICRM(ERM):
         hparams['is_transformer'] = 1
         super(ICRM, self).__init__(input_shape, num_classes,
                                   hparams)
-                
-    def predict(self, x, y, return_context = False, past_key_values = None): 
+
+    def predict(self, x, y, return_context = False, past_key_values = None):
         original_dims = x.ndim
         original_y_shape = y.shape
-        
+
         # Debug information for unusual dimensions
         if original_dims >= 5:
             print(f"DEBUG: predict called with unusual input dimensions:")
@@ -367,13 +367,13 @@ class ICRM(ERM):
             print(f"  y.shape = {y.shape}, y.ndim = {y.ndim}")
             print(f"  return_context = {return_context}")
             print(f"  past_key_values provided = {past_key_values is not None}")
-        
+
         # Handle input dimensions
-        if x.ndim == 4:                                                             # Splits a batch into multiple sequences with length as the context length                                    
-            bs, c, h, w = x.size()                          
+        if x.ndim == 4:                                                             # Splits a batch into multiple sequences with length as the context length
+            bs, c, h, w = x.size()
             bs, ctxt = bs // self.context_len, self.context_len
             y = y.reshape(bs, ctxt)
-        elif x.ndim == 5:   
+        elif x.ndim == 5:
             bs, ctxt, c, h, w = x.size()
             x = x.contiguous().view(bs * ctxt, c, h, w)
         elif x.ndim == 6:
@@ -383,10 +383,10 @@ class ICRM(ERM):
             bs = shape[0] * shape[1]  # Combine first two dimensions
             ctxt = shape[2]
             c, h, w = shape[3], shape[4], shape[5]
-            
+
             # Reshape to [bs*ctxt, c, h, w] for the featurizer
             x = x.view(bs * ctxt, c, h, w)
-            
+
             # If y has matching batch dimensions, reshape it too
             if y.ndim > 1 and y.shape[0] == shape[0] and y.shape[1] == shape[1]:
                 y = y.view(bs, -1)
@@ -401,29 +401,31 @@ class ICRM(ERM):
                 ctxt = 1
             else:
                 raise NotImplementedError(f"Unsupported input dimension: {x.ndim}")
-        
+
         # Apply featurizer if input has image-like dimensions
         if x.ndim >= 3 and hasattr(self, 'featurizer'):
             x = self.featurizer(x)
-                                                    
         # Reshape for transformer input if needed
         if hasattr(self, 'classifier') and isinstance(self.classifier, nn.Module):
-            if x.ndim == 2:
-                # If already 2D (batch, features), reshape to 3D for transformer
-                x = x.unsqueeze(1)  # (batch, 1, features)
-                bs, ctxt, _ = x.shape
-            elif x.ndim == 3 and x.shape[1] != ctxt:
-                # Ensure middle dimension is context length
-                x = x.reshape(bs, ctxt, -1)
-                
+            print(x.shape, bs, ctxt)
+            # if x.ndim == 2:
+            #     print("here 2")
+            #     # If already 2D (batch, features), reshape to 3D for transformer
+            #     x = x.unsqueeze(1)  # (batch, 1, features)
+            #     bs, ctxt, _ = x.shape
+            # elif x.ndim == 3 and x.shape[1] != ctxt:
+            #     print("here 3")
+            #     # Ensure middle dimension is context length
+            x = x.reshape(bs, ctxt, -1)
+
             # Call classifier (GPT2Transformer)
             if original_dims >= 5:
                 print(f"DEBUG: Before classifier call:")
                 print(f"  x.shape = {x.shape}")
                 print(f"  Classifier input type: {type((x, y, None, past_key_values))}")
-            
+
             outputs = self.classifier((x, y, None, past_key_values))
-            
+
             # Unpack outputs
             if isinstance(outputs, tuple) and len(outputs) == 2:
                 p, past = outputs
@@ -439,9 +441,11 @@ class ICRM(ERM):
                     print(f"  p.shape = {p.shape}")
         else:
             # Handle case where no classifier exists or direct prediction
+            print("oh no")
+            input("v1:")
             p = x
             past = None
-            
+
         # Return with appropriate dimensions
         if return_context:
             return p, past
@@ -470,12 +474,12 @@ class ICRM(ERM):
             else:
                 # Otherwise return as is
                 return p
-    
+
     def repeat_past_key_values(self, past_key_values, repeats):                     # process key value cache for computing fast inference
         # Handle None case
         if past_key_values is None:
             return None
-            
+
         repeated_past_key_values = []
         for layer_past in past_key_values:
             repeated_layer_past = []
@@ -488,7 +492,7 @@ class ICRM(ERM):
             repeated_past_key_values.append(tuple(repeated_layer_past))
         return tuple(repeated_past_key_values)
 
-    
+
     def _evaluate_robust(self, model, loader, metrics = ['accuracy'], test_cache = None):
         test_cache_x, test_cache_y = test_cache
         assert test_cache_x is not None
@@ -496,16 +500,16 @@ class ICRM(ERM):
         self.network.eval()
         model.eval()
         result = {}
-        for context_val in self.test_ctxt: 
-            with torch.no_grad():  
-                if context_val == 0:    initial_past = None    
+        for context_val in self.test_ctxt:
+            with torch.no_grad():
+                if context_val == 0:    initial_past = None
                 else:
                     _, initial_past = self.predict(test_cache_x[:, :context_val], test_cache_y[:, :context_val], return_context = True)
                     initial_past = self.repeat_past_key_values(initial_past, loader._bs if hasattr(loader, '_bs') else 1)
-                
+
                 all_p, all_y = [],[]
                 batch_shapes = []
-                
+
                 # Add more debug info about loader
                 print(f"DEBUG: Loader type: {type(loader)}")
                 if hasattr(loader, 'dataset'):
@@ -517,33 +521,33 @@ class ICRM(ERM):
                             print(f"DEBUG: Sample from dataset - x.shape: {sample_x.shape}, y.shape: {sample_y.shape if hasattr(sample_y, 'shape') else 'scalar'}")
                         except Exception as e:
                             print(f"DEBUG: Error accessing dataset item: {e}")
-                
+
                 for batch_idx, (x, y) in enumerate(loader):
                     print(f"DEBUG: Batch {batch_idx} from loader - x.shape: {x.shape}, y.shape: {y.shape}")
-                    
-                    x, y = x.to(self.device), y.to(self.device)   
-                    
+
+                    x, y = x.to(self.device), y.to(self.device)
+
                     # Check for unexpected 6D tensor
                     if x.ndim == 6:
                         print(f"DEBUG: Found 6D input tensor in batch {batch_idx}:")
                         print(f"  x.shape = {x.shape}")
                         print(f"  y.shape = {y.shape}")
-                        
+
                         # Try to understand the structure - print a sample of dimensions
                         print(f"  First dimension sizes: {[x.size(d) for d in range(min(6, x.ndim))]}")
-                        
+
                         # Check if this is a nested batch structure
                         if x.size(0) == 1:
                             print("  This appears to be a batch with a single item, reshaping...")
                             x = x.squeeze(0)  # Remove the first dimension if it's 1
-                    
-                    p, _ = self.predict(x, y, return_context = True, past_key_values = initial_past)   
-                    
+
+                    p, _ = self.predict(x, y, return_context = True, past_key_values = initial_past)
+
                     # Record shapes for debugging
                     batch_shapes.append((x.shape, y.shape, p.shape))
-                    
+
                     # Handle reshaping y based on its dimensions
-                    if y.ndim == 1: 
+                    if y.ndim == 1:
                         # If y is 1D (batch,), reshape to 2D (batch/context_len, context_len)
                         if y.shape[0] % self.context_len == 0:
                             y_reshape = y.view(-1, self.context_len)
@@ -555,10 +559,10 @@ class ICRM(ERM):
                                 y_reshape = y_padded.view(-1, self.context_len)
                             else:
                                 y_reshape = y.unsqueeze(1)  # Just add a dimension
-                    else:   
+                    else:
                         # If y is already multidimensional, use as is
                         y_reshape = y
-                    
+
                     # Handle reshaping p based on its dimensions
                     if p.ndim == 3 and y_reshape.ndim == 2 and p.shape[0] != y_reshape.shape[0]:
                         # If p is (batch, seq_len, features) but dimensions don't match y_reshape
@@ -571,20 +575,20 @@ class ICRM(ERM):
                             p_reshape = p
                     else:
                         p_reshape = p
-                    
+
                     all_p.append(p_reshape)
-                    all_y.append(y_reshape)                   
-                
+                    all_y.append(y_reshape)
+
                 # Print batch shapes for debugging
                 print(f"Batch shapes: {batch_shapes}")
-                
+
                 # Process each tensor separately before concatenation
                 processed_p = []
                 processed_y = []
-                
+
                 for i, (p, y) in enumerate(zip(all_p, all_y)):
                     print(f"Processing batch {i}: p.shape={p.shape}, y.shape={y.shape}")
-                    
+
                     # Handle different dimension cases
                     if p.ndim == 3 and y.ndim == 2:
                         # Extract last predictions for sequence
@@ -616,11 +620,11 @@ class ICRM(ERM):
                                 print(f"Skipping incompatible pair: p.shape={p.shape}, y.shape={y.shape}")
                         else:
                             print(f"Skipping incompatible pair: p.shape={p.shape}, y.shape={y.shape}")
-                
+
                 if not processed_p or not processed_y:
                     print("No valid tensor pairs found, skipping context")
                     continue
-                
+
                 # Concatenate processed tensors
                 try:
                     all_p = torch.cat(processed_p, dim=0)
@@ -631,14 +635,14 @@ class ICRM(ERM):
                     print(f"Processed shapes: p={[p.shape for p in processed_p]}, y={[y.shape for y in processed_y]}")
                     # Skip this context if we can't concatenate tensors
                     continue
-                
+
                 # Final dimension adjustment if sizes still don't match
                 if all_p.shape[0] != all_y.shape[0]:
                     print(f"Mismatched dimensions after processing: all_p={all_p.shape}, all_y={all_y.shape}")
-                    
+
                     # For the specific case of 258816 vs 4044
                     factor = all_p.shape[0] // all_y.shape[0] if all_p.shape[0] > all_y.shape[0] else all_y.shape[0] // all_p.shape[0]
-                    
+
                     if all_p.shape[0] > all_y.shape[0]:
                         if all_p.shape[0] % all_y.shape[0] == 0:
                             # If p is larger and divisible by y, reshape p
@@ -666,23 +670,23 @@ class ICRM(ERM):
                             # Otherwise truncate to smallest size
                             print("Truncating targets to match predictions")
                             all_y = all_y[:all_p.shape[0]]
-                
+
                 # Print final shapes
                 print(f"Final shapes for metric computation: all_p={all_p.shape}, all_y={all_y.shape}")
-                
+
                 # Compute metrics with final tensors
                 metric_results = utils.compute_metric(metrics, all_p, all_y)
-                result.update({f'{metric}(e-{self.context_len - context_val})': metric_results[metric] for metric in metrics})      
-        
+                result.update({f'{metric}(e-{self.context_len - context_val})': metric_results[metric] for metric in metrics})
+
         self.network.train()
         model.train()
-        return result 
-    
+        return result
+
     def evaluate(self, loader, module = 'train', cache = None):
         self.test_ctxt = list(range(0, 51, 5)) if module == 'test' else [0, 25, 50, 75, 100]
         result = self._evaluate_robust(self.network, loader, self.hparams['metrics'],  cache)
         return result
- 
+
 
 class ARM_CML(ERM):
     """ Adaptive Risk Minimization (ARM) - (Context Model)"""
@@ -694,38 +698,38 @@ class ARM_CML(ERM):
         self.adapt_bn = hparams['adapt_bn']
         input_shape =  (self.n_context_channels + input_shape[0],) + input_shape[1:]             # Since we concatenate the context with input x
         super(ARM_CML, self).__init__(input_shape, num_classes, hparams)
-        if hasattr(networks, hparams['context_net']):                                                
-            self.context_net = getattr(networks, hparams['context_net'])(original_input_shape[0], hparams)  
+        if hasattr(networks, hparams['context_net']):
+            self.context_net = getattr(networks, hparams['context_net'])(original_input_shape[0], hparams)
             if hparams['is_parallel']:
                 self.context_net = utils.data_parallel(self.context_net)
         else:
             raise NotImplementedError()
-        
+
         #  Joint optimizer for ϕ and 𝜃
         params = list(self.network.parameters()) + list(self.context_net.parameters())
         self.optimizer = utils.extract_optimizer(self.hparams['optimizer_name'], params, lr = self.hparams['lr'], weight_decay = self.hparams['weight_decay'])
         self.hparams['mode'] = 'train'
-        
-        
+
+
     def predict(self, x, y = None, model = None):
         bs, _, h, w = x.shape
         re = bs  % self.ctxt
         if self.hparams['mode'] == 'train':
             assert re == 0, 'During training, makre sure batch size is a multiple of support'
-            
+
         if self.hparams['mode'] == 'test' and re != 0:
-            x = torch.cat([x, x[:(self.ctxt - re)].clone()], dim=0) 
-            y = torch.cat([y, y[:(self.ctxt - re)].clone()], dim=0) 
+            x = torch.cat([x, x[:(self.ctxt - re)].clone()], dim=0)
+            y = torch.cat([y, y[:(self.ctxt - re)].clone()], dim=0)
 
         eff_bs, supp_size = len(x) // self.ctxt, self.ctxt
         ctxt = self.context_net(x)
-        ctxt = ctxt.reshape(eff_bs, supp_size, self.n_context_channels, h, w).mean(dim=1)    
+        ctxt = ctxt.reshape(eff_bs, supp_size, self.n_context_channels, h, w).mean(dim=1)
         ctxt = torch.repeat_interleave(ctxt, repeats = supp_size, dim=0)
         x = torch.cat([x, ctxt], dim=1)
         if self.hparams['mode'] == 'test':
             return self.network(x), y
         return self.network(x)
- 
+
     def _evaluate(self, model, loader, metrics=['accuracy']):
         metrics = metrics or self.metrics
         model.eval()
@@ -737,7 +741,7 @@ class ARM_CML(ERM):
                 try:
                     x, y = x.to(self.device), y.to(self.device)
                     p, y_modif = self.predict(x, y, model=model)
-                    
+
                     # Handle tensor dimension compatibility
                     if p.ndim > 1 and y_modif.ndim == 1 and p.shape[0] == y_modif.shape[0]:
                         # Standard case
@@ -753,7 +757,7 @@ class ARM_CML(ERM):
                     else:
                         # Default case
                         batch_results = utils.compute_metric(metrics, p, y_modif)
-                        
+
                     for metric in metrics:
                         result[metric] += batch_results[metric] * len(y_modif)
                     total += len(y_modif)
@@ -764,31 +768,31 @@ class ARM_CML(ERM):
                         print(f"p: {p.shape}, y_modif: {y_modif.shape}")
                     # Continue to next batch
                     continue
-                    
-            for metric in metrics:  
+
+            for metric in metrics:
                 result[metric] /= (total + 1e-9)
             model.train()
             return result
-   
+
     def evaluate(self, loader, module = 'train', cache = None):
         self.hparams['mode'] = 'test'
-        self.hparams['test_support'] = self.hparams['test_support'] if self.hparams['test_support'] is not None else self.ctxt         
+        self.hparams['test_support'] = self.hparams['test_support'] if self.hparams['test_support'] is not None else self.ctxt
         result = {}
         self.test_ctxt = range(0, 51, 5) if module == 'test' else [0, 25, 50, 75, 100]
-        for supp in self.test_ctxt:  
+        for supp in self.test_ctxt:
             if supp == 0:
                 self.ctxt = supp + 1
             else:
                 self.ctxt = supp
             metric_results = self._evaluate(self.network, loader, self.hparams['metrics'])
-            result.update({f'{metric}(e-{self.hparams["test_support"] - supp})': metric_results[metric] for metric in self.hparams['metrics']})    
+            result.update({f'{metric}(e-{self.hparams["test_support"] - supp})': metric_results[metric] for metric in self.hparams['metrics']})
         self.hparams['mode'] = 'train'
         self.context_net.train()
         self.network.train()
         self.ctxt = self.orig_ctxt
-        return result 
+        return result
 
- 
+
 
 class Mixup(ERM):
     """
@@ -818,7 +822,7 @@ class Mixup(ERM):
         self.optimizer.step()
 
         return {'train_loss': objective.item()}
-    
+
 
 class IB_ERM(ERM):
     """Information Bottleneck based ERM on feature with conditionning"""
@@ -827,7 +831,7 @@ class IB_ERM(ERM):
         super(IB_ERM, self).__init__(input_shape, num_classes, hparams)
         self.optimizer = utils.extract_optimizer(self.hparams['optimizer_name'], list(self.featurizer.parameters()) + list(self.classifier.parameters()), lr=self.hparams["lr"], weight_decay=self.hparams['weight_decay'])
         self.register_buffer('update_count', torch.tensor([0]))
-        
+
     @property
     def ib_penalty_weight(self):
         return self.hparams['ib_lambda'] if self.update_count >= self.hparams['ib_penalty_anneal_iters'] else 0.0
@@ -840,11 +844,11 @@ class IB_ERM(ERM):
         all_logits = self.classifier(all_features)
         features_list = torch.split(all_features, [x.shape[0] for x, y in minibatches])
         logits_list = torch.split(all_logits, [x.shape[0] for x, y in minibatches])
-        
+
         nll = torch.mean(torch.stack([F.cross_entropy(logits, y) for logits, (x, y) in zip(logits_list, minibatches)]))
         ib_penalty = torch.mean(torch.stack([features.var(dim=0).mean() for features in features_list]))
         loss = nll + self.ib_penalty_weight * ib_penalty
-        
+
         if self.update_count == self.hparams['ib_penalty_anneal_iters']:
             self.optimizer = utils.extract_optimizer(self.hparams['optimizer_name'], list(self.featurizer.parameters()) + list(self.classifier.parameters()), lr=self.hparams["lr"], weight_decay=self.hparams['weight_decay'])
 
@@ -854,8 +858,8 @@ class IB_ERM(ERM):
 
         self.update_count += 1
         return {'train_loss': loss.item(), 'nll': nll.item(), 'IB_penalty': ib_penalty.item()}
-       
-              
+
+
 class IB_IRM(ERM):
     """Information Bottleneck based IRM on feature with conditionning"""
 
@@ -906,7 +910,7 @@ class IB_IRM(ERM):
 
         self.update_count += 1
         return {'train_loss': loss.item(), 'nll': nll.item(), 'IRM_penalty': irm_penalty.item(), 'IB_penalty': ib_penalty.item()}
-    
+
 
 class Fish(ERM):
     """

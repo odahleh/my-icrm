@@ -15,9 +15,9 @@ import copy
 
 
 def Featurizer(input_shape, hparams):
-    """Auto-select an appropriate featurizer for the given input shape."""     
+    """Auto-select an appropriate featurizer for the given input shape."""
     if len(input_shape) <= 2 :
-        return MLP(input_shape[-1], hparams["mlp_width"], hparams)  
+        return MLP(input_shape[-1], hparams["mlp_width"], hparams)
     elif input_shape[1:3] == (28, 28):
         if hparams['is_transformer']:
             model = ContextNet(input_shape[0], hparams)
@@ -30,7 +30,7 @@ def Featurizer(input_shape, hparams):
         return ResNet(input_shape[0], hparams)
     else:
         raise NotImplementedError
-   
+
 def Classifier(in_features, out_features, hparams):
     if hparams['is_transformer']:
         return GPT2Transformer(in_features, out_features, hparams)
@@ -53,7 +53,7 @@ class CNN(nn.Module):
         hidden_dim = hparams.get('hidden_dim', 128)
         padding = (k_size - 1) // 2
         num_channels = hparams.get('num_features', 1)
-               
+
         if self.is_small:
             self.conv1 = nn.Sequential(
                             nn.Conv2d(n_inputs, hidden_dim, k_size),
@@ -102,7 +102,7 @@ class CNN(nn.Module):
         out = self.last(out)
 
         return out
-            
+
 class MLP(nn.Module):
     def __init__(self, n_inputs, n_outputs, hparams):
         super(MLP, self).__init__()
@@ -114,8 +114,8 @@ class MLP(nn.Module):
         mlp_depth = hparams.get('mlp_depth', 5)
         activation = hparams.get('activation', 'relu')
         mlp_dropout = hparams.get('mlp_dropout', 0)
-        
-        
+
+
         self.is_bn = hparams.get('mlp_bn', 0)
         self.is_ln = hparams.get('mlp_ln', 0)
         self.input = nn.Linear(n_inputs, mlp_width)
@@ -140,8 +140,8 @@ class MLP(nn.Module):
             if self.is_ln:  x = self.ln(x)
         x = self.output(x)
         return x
-          
-           
+
+
 class GPT2Transformer(nn.Module):
     def __init__(self, n_inputs,  n_outputs, hparams):
         super(GPT2Transformer, self).__init__()
@@ -152,7 +152,7 @@ class GPT2Transformer(nn.Module):
         context_len = hparams['context_length']
 
         configuration = GPT2Config(
-            n_positions= context_len,                 
+            n_positions= context_len,
             n_embd=n_embd,
             n_layer=n_layer,
             n_head=n_head,
@@ -160,23 +160,37 @@ class GPT2Transformer(nn.Module):
             embd_pdrop=0.0,
             attn_pdrop=0.0,
             use_cache= True,
-        )   
-        self.context_len =context_len
+        )
+        self.context_len = context_len
         self.name = f"gpt2_embd={n_embd}_layer={n_layer}_head={n_head}"
         self.n_inputs = n_inputs
         self.n_outputs = n_outputs
         self._read_in = nn.Linear(n_inputs, n_embd)
-        
+
         self._backbone = GPT2Model(configuration)
         self._read_out = nn.Linear(n_embd, n_outputs)
+
+        # Add learnable query vector for attention pooling
+        self.query = nn.Parameter(torch.randn(1, 1, n_embd))
+        # Add attention projection layers
+        self.key_proj = nn.Linear(n_embd, n_embd)
+        self.value_proj = nn.Linear(n_embd, n_embd)
+
         self.initialize()
-    
+
     def initialize(self):
         nn.init.xavier_uniform_(self._read_in.weight)
         nn.init.zeros_(self._read_in.bias)
         nn.init.xavier_uniform_(self._read_out.weight)
         nn.init.zeros_(self._read_out.bias)
-        
+
+        # Initialize attention components
+        nn.init.xavier_uniform_(self.key_proj.weight)
+        nn.init.zeros_(self.key_proj.bias)
+        nn.init.xavier_uniform_(self.value_proj.weight)
+        nn.init.zeros_(self.value_proj.bias)
+        nn.init.xavier_uniform_(self.query)
+
         for name, param in self._backbone.named_parameters():
             if param.dim() > 1:
                 nn.init.xavier_uniform_(param)
@@ -185,21 +199,40 @@ class GPT2Transformer(nn.Module):
 
     def forward(self, inputs):
         xs, ys, inds, past_key_values = inputs
+        ys = ys.view(ys.shape[0], -1)
         if inds is None:
             inds = torch.arange(ys.shape[1])
         else:
             inds = torch.tensor(inds)
             if max(inds) >= ys.shape[1] or min(inds) < 0:
                 raise ValueError("inds contain indices where xs and ys are not defined")
-            
-        embeds = self._read_in(xs)
-        outputs = self._backbone(inputs_embeds=embeds, past_key_values=past_key_values)
-        output = outputs.last_hidden_state
-        prediction = self._read_out(output)
-        return prediction[:, :, :][:, inds], outputs.past_key_values
-        
 
-class ContextNet(nn.Module):        
+        embeds = self._read_in(xs)  # [batch_size, seq_len, n_embd]
+        outputs = self._backbone(inputs_embeds=embeds, past_key_values=past_key_values)
+        output = outputs.last_hidden_state  # [batch_size, seq_len, n_embd]
+
+        # Attention-weighted pooling
+        batch_size = output.shape[0]
+        query = self.query.expand(batch_size, -1, -1)  # [batch_size, 1, n_embd]
+        keys = self.key_proj(output)  # [batch_size, seq_len, n_embd]
+        values = self.value_proj(output)  # [batch_size, seq_len, n_embd]
+
+        # Compute attention scores
+        attention_scores = torch.matmul(query, keys.transpose(-2, -1))  # [batch_size, 1, seq_len]
+        attention_scores = attention_scores / (self.n_inputs ** 0.5)  # Scale scores
+        attention_weights = F.softmax(attention_scores, dim=-1)  # [batch_size, 1, seq_len]
+
+        # Apply attention weights to values
+        pooled_output = torch.matmul(attention_weights, values)  # [batch_size, 1, n_embd]
+        pooled_output = pooled_output.squeeze(1)  # [batch_size, n_embd]
+
+        # Make prediction using the attention-pooled representation
+        prediction = self._read_out(pooled_output)  # [batch_size, n_outputs]
+
+        return prediction, outputs.past_key_values
+
+
+class ContextNet(nn.Module):
     def __init__(self, n_inputs, hparams):
         super(ContextNet, self).__init__()
         # Keep same dimensions
@@ -230,7 +263,7 @@ class Identity(nn.Module):
 
     def forward(self, x):
         return x
-   
+
 class ResNet(torch.nn.Module):
     """ResNet with the softmax chopped off and the batchnorm frozen"""
     def __init__(self, n_inputs, hparams):
@@ -267,7 +300,7 @@ class ResNet(torch.nn.Module):
     def forward(self, x):
         """Encode x into a feature vector of size n_outputs."""
         return self.dropout(self.network(x))
-    
+
 
     def train(self, mode=True):
         """
@@ -281,7 +314,7 @@ class ResNet(torch.nn.Module):
         for m in self.network.modules():
             if isinstance(m, nn.BatchNorm2d):
                 m.eval()
-                
+
 
 class DenseNet(nn.Module):
     """DenseNet with the softmax chopped off and the batchnorm frozen"""
@@ -310,11 +343,11 @@ class DenseNet(nn.Module):
         self.n_features = self.network.classifier.in_features
         del self.network.classifier
         self.network.classifier = Identity()
-        
+
         if hparams['freeze_bn']:
             self.freeze_bn()
             print('=> Training DenseNet with frozen batch norm...')
-            
+
         self.hparams = hparams
         self.dropout = nn.Dropout(hparams.get('densenet_dropout', 0))
 
@@ -334,8 +367,8 @@ class DenseNet(nn.Module):
         for m in self.network.modules():
             if isinstance(m, nn.BatchNorm2d):
                 m.eval()
-                
-                                
+
+
 class WholeFish(nn.Module):
     def __init__(self, input_shape, num_classes, hparams, weights=None):
         super(WholeFish, self).__init__()
@@ -355,5 +388,5 @@ class WholeFish(nn.Module):
 
     def forward(self, x):
         return self.net(x)
-    
-    
+
+
