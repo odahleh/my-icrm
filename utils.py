@@ -29,15 +29,15 @@ from numbers import Number
 import torch.distributed as dist
 import seaborn as sns
 import tqdm
-
+from sklearn.metrics import roc_auc_score
 from query import Q
 
 DEBUG = False  # Set to True when debugging
 
 def d_print(*args, **kwargs):
     if DEBUG:
-        print(*args, **kwargs) 
-        
+        print(*args, **kwargs)
+
 
 def set_seed(seed, use_cuda):
     os.environ['PYTHONHASHSEED'] = str(seed)
@@ -46,12 +46,12 @@ def set_seed(seed, use_cuda):
     torch.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    
+
     if use_cuda:
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
     print(f'=> Seed of the run set to {seed}')
-    
+
 def seed_hash(*args):
     """
     Derive an integer hash from all args, for use as a random seed.
@@ -69,12 +69,12 @@ class  Logger(object):
             self.run = wandb.init(project=args.project, id = args.run_id, entity=args.user, resume="must", tags=tags)
         elif not args.debug:
             self.run = wandb.init(project=args.project, name = self.args.run_name, entity=args.user, reinit=True, tags=tags)
-        config = wandb.config 
+        config = wandb.config
         curr_date = date.today()
         curr_date = curr_date.strftime("%B %d, %Y")
-        wandb.config.update({"curr_date": curr_date}, allow_val_change=True) 
-        wandb.config.update(args, allow_val_change=True) 
-           
+        wandb.config.update({"curr_date": curr_date}, allow_val_change=True)
+        wandb.config.update(args, allow_val_change=True)
+
 
     def log(self, info):
         if not self.args.debug:
@@ -84,7 +84,7 @@ class  Logger(object):
     def finish(self):
         if not self.args.debug:
             self.run.finish()
-   
+
 class Tee:
     def __init__(self, fname, mode="a"):
         self.stdout = sys.stdout
@@ -98,7 +98,7 @@ class Tee:
     def flush(self):
         self.stdout.flush()
         self.file.flush()
-                 
+
 def save_checkpoint(algorithm, optimizer,hparams, args, metric_results, output_dir, filename = 'checkpoint.pth.tar', save_best = False):
         if args.skip_model_save:
             return
@@ -110,21 +110,21 @@ def save_checkpoint(algorithm, optimizer,hparams, args, metric_results, output_d
             'optimizer' : optimizer.state_dict()
         }
         os.makedirs(output_dir, exist_ok=True)
-        
+
         # Save best model based on loss
         if save_best:
             torch.save(save_dict, os.path.join(output_dir, 'checkpoint_best.pth.tar'))
         # Save checkpoint model
         else:
-            torch.save(save_dict, os.path.join(output_dir, filename))         
-        
+            torch.save(save_dict, os.path.join(output_dir, filename))
+
 def load_checkpoint(path, epoch=None, best_model=False):
     if os.path.exists(path):
         try :
             if best_model is True:
                 file = os.path.join(path, 'checkpoint_best.pth.tar')
                 checkpoint = torch.load(file)
-                print("=> Loading pre-trained model '{}'".format(file))           
+                print("=> Loading pre-trained model '{}'".format(file))
             elif epoch is not None:
                 file = os.path.join(path, 'checkpoint_step{}.pth.tar'.format(epoch))
                 checkpoint = torch.load(file)
@@ -150,7 +150,7 @@ class _InfiniteSampler(torch.utils.data.Sampler):
         while True:
             for batch in self.sampler:
                 yield batch
-                
+
 class InfiniteDataLoader:
     def __init__(self, dataset, weights, batch_size, num_workers):
         super().__init__()
@@ -181,8 +181,8 @@ class InfiniteDataLoader:
             yield next(self._infinite_iterator)
 
     def __len__(self):
-        raise ValueError 
-    
+        raise ValueError
+
 class FastDataLoader:
     """DataLoader wrapper with slightly improved speed by not respawning worker
     processes at every epoch."""
@@ -209,7 +209,7 @@ class FastDataLoader:
 
     def __len__(self):
         return self._length
-    
+
 def batch_transform_to_context(xs, ys, context_len, xstart_token = None, ystart_token = None):
     bs, xdim = xs.shape
     _, ydim = ys.shape
@@ -219,11 +219,11 @@ def batch_transform_to_context(xs, ys, context_len, xstart_token = None, ystart_
         zs = zs.view(bs // context_len, context_len, -1)                 # zs has shape (effective bs, context, xdim + ydim)
     else:
         eff_bs, seq_len = 1, context_len
-        zs = zs.unsqueeze(0)                                             # zs has shape (1, bs, xdim + ydim)  
+        zs = zs.unsqueeze(0)                                             # zs has shape (1, bs, xdim + ydim)
     xs, ys = zs[:, :, :xdim], zs[:, :, xdim:]
     if xstart_token is not None:
         xstart_token = xstart_token.expand(eff_bs, xstart_token.shape[1], xstart_token.shape[2])
-        xs = torch.cat((xstart_token, xs), dim=1)    
+        xs = torch.cat((xstart_token, xs), dim=1)
     if ystart_token is not None:
         ystart_token = ystart_token.expand(eff_bs, ystart_token.shape[1], ystart_token.shape[2])
         ys = torch.cat((ystart_token, ys), dim=1)
@@ -251,7 +251,7 @@ def extract_optimizer(optimizer_name, parameters, **kwargs):
     optimizer_class = getattr(optim, optimizer_name, None)
     if optimizer_class is None:
         raise ValueError(f"Unsupported optimizer: {optimizer_name}")
-    
+
     # Filter any arguments pertaining to other optimizers
     optimizer_args = inspect.getfullargspec(optimizer_class.__init__).args[1:]
     valid_args = {k: v for k, v in kwargs.items() if k in optimizer_args}
@@ -302,11 +302,18 @@ def accuracy(ys_pred, ys):
         correct = (ys_pred.argmax(1).eq(ys).float()).sum().item()
     return 1. * correct / len(ys)
 
+def auroc(ys_pred, ys):
+    # For binary classification with nx2 predictions, take the positive class probability
+    if ys_pred.size(1) == 2:
+        ys_pred = ys_pred[:, 1]  # Take probability of positive class
+    return roc_auc_score(ys.detach().cpu().numpy(), ys_pred.detach().cpu().numpy())
+
 def compute_metric(metrics, ys_pred, ys):
     metric_dict = {
         "mse": partial(mse),
         "accuracy": partial(accuracy),
-        "acc": partial(accuracy)
+        "acc": partial(accuracy),
+        "auroc": partial(auroc)
     }
     result = {metric: 0 for metric in metrics}
     for metric in metrics:
@@ -315,7 +322,7 @@ def compute_metric(metrics, ys_pred, ys):
         else:
             raise ValueError(f"Unsupported metric function: {metric}")
     return result
-    
+
 def compute_additional_metrics(metrics: List[str], values: List[Dict[str, Union[int, float]]]) -> Dict[str, Union[int, float]]:
     """
     Computes additional metrics based on the given metrics and values.
@@ -349,17 +356,17 @@ def print_row(row, colwidth=10, latex=False):
             x = "{:.4f}".format(x)
         return str(x).ljust(colwidth)[:colwidth]
     print(sep.join([format_val(x) for x in row]), end_)
-    
-    
+
+
 def extract_last_layer(model):
     if isinstance(model, torch.nn.Module):
         last_linear_layer = None
-        
+
         # Find the last linear layer in the model
         for module in model.modules():
             if isinstance(module, torch.nn.Linear):
                 last_linear_layer = module
-        
+
         if last_linear_layer is not None:
             return last_linear_layer
         else:
@@ -371,14 +378,14 @@ def extract_last_layer(model):
 
 def find_device(model):
     if isinstance(model, torch.nn.Module):
-        first_param = next(model.parameters(), None)        
+        first_param = next(model.parameters(), None)
         if first_param is not None:
             return first_param.device
         else:
             raise ValueError("Model has no parameters")
     else:
         raise ValueError("Invalid model type. Expected torch.nn.Module.")
-    
+
 
 def data_parallel(model):
     if torch.cuda.device_count() > 1:
@@ -386,12 +393,12 @@ def data_parallel(model):
         return torch.nn.DataParallel(model)
     else:
         return model
-    
+
 def setup(rank, world_size):
     # Use SLURM environment variables to set up distributed training.
     os.environ['MASTER_ADDR'] = os.environ['SLURM_JOB_NODELIST'].split(',')[0]  # Assumes a comma-separated list of nodes
     os.environ['MASTER_PORT'] = '12355'
-    
+
     # initialize the process group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
@@ -421,7 +428,7 @@ def get_samples_for_test(num_test_samples, loader):
     samples_x, samples_y = [], []
     remaining_elements = num_test_samples
     # Iterate over the data loader
-    for x, y in loader: 
+    for x, y in loader:
         if remaining_elements <= len(x):                                                   # If the remaining elements can be fulfilled by the current batch
             samples_x.append(x[:remaining_elements])
             samples_y.append(y[:remaining_elements])
@@ -530,7 +537,7 @@ def get_grouped_records(records):
                 r["args"]["shuffle_ctxt"],
                 test_env)
             result[group].append(r)
-    return Q([{"trial_seed": t, "dataset": d, "algorithm": a, "shuffle_ctxt": s, "test_env": e, 
+    return Q([{"trial_seed": t, "dataset": d, "algorithm": a, "shuffle_ctxt": s, "test_env": e,
         "records": Q(r)} for (t,d,a,s,e),r in result.items()])
 
 

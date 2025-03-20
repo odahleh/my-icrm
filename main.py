@@ -70,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument('--custom-name', default='', type=str, help='custom log names to add')
     parser.add_argument('--colwidth', type=int, default=15)
     parser.add_argument('--test_envs', type=int, nargs='+', default=[None])
-    parser.add_argument('--output_dir', type=str, default="~/ICRM/results/")
+    parser.add_argument('--output_dir', type=str, default="~/MultiInstancePredictor/results/")
     parser.add_argument('--skip_model_save', action='store_true')
     parser.add_argument('--wandb', action='store_true', help = 'log into wandb')
     parser.add_argument('--run-name', type=str, default='', help='Choose name of wandb run')
@@ -182,7 +182,7 @@ if __name__ == "__main__":
                         for i, env in enumerate(dataset.holdout_test)]
 
 
-    if args.algorithm == 'ICRM':
+    if args.algorithm == 'MultiInstancePredictor':
         validation_cache = [(x.to(device), y.to(device)) for x, y in zip(dataset.valid_cache_x,dataset.valid_cache_y) ]
         holdout_test_cache = [(x.to(device), y.to(device)) for x, y in zip(dataset.test_cache_x,dataset.test_cache_y) ]
     else:
@@ -217,7 +217,7 @@ if __name__ == "__main__":
     checkpoint_freq = args.checkpoint_freq or dataset.CHECKPOINT_FREQ
     ckpt_metric_name = algorithm._get_ckpt_metric()
     args.test_eval_freq = args.eval_freq if args.test_eval_freq is None else args.test_eval_freq
-    print(f'=> Checkpointing based on {ckpt_metric_name}')
+    print(f'=> Checkpointing based on {hparams["ckpt_metric_aggr"]}_val_{ckpt_metric_name}')
 
     for step in range(start_step, n_steps):
         step_start_time = time.time()
@@ -235,9 +235,9 @@ if __name__ == "__main__":
             for index, loader in enumerate(val_loaders):
                 val_metric_results = algorithm.evaluate(loader, cache = validation_cache[index])
                 consolidated_val_results.append({f'va_{metric_name}': val for metric_name, val in val_metric_results.items()})
-            consolidated_val_results = utils.compute_additional_metrics(hparams.get('additonal_metrics', ['acc']), consolidated_val_results)
+            consolidated_val_results = utils.compute_additional_metrics(hparams.get('additonal_metrics', ['worst_group', 'average']), consolidated_val_results)
             info.update(consolidated_val_results)
-            ckpt_metric = consolidated_val_results[f'avg_va_{ckpt_metric_name}']
+            ckpt_metric = consolidated_val_results[f'{hparams["ckpt_metric_aggr"]}_va_{ckpt_metric_name}']
 
         ## Model evaluation (testing)
         if dataset.holdout_test and step % args.test_eval_freq == 0:
